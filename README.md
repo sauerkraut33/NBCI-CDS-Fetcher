@@ -9,17 +9,19 @@ The program is designed to reduce repetitive manual searching in NCBI while stil
 The current version:
 
 1. Reads a species list from an Excel file.
-2. Prompts the user to enter a target gene name, such as `CALM1`.
+2. Prompts the user to enter one or more target gene, such as `CALM1` or `CALM1,CNGA1,AIPL1`.
 3. Searches NCBI Nucleotide for matching RefSeq mRNA records for each species.
 4. Keeps RefSeq mRNA records with:
     - `NM_` accessions: RefSeq curated mRNA
     - `XM_` accessions: RefSeq predicted mRNA
+    Prioritizes NM_ records when both NM_ and XM_ records are found for the same gene/species search.
 5. Fetches GenBank records for the candidate accessions.
 6. Extracts CDS features matching the target gene.
 7. Calculates CDS length from the extracted CDS sequence.
 8. Creates a gene-specific output folder.
 9. Writes all retrieved CDS sequences into a combined `.txt` file.
 10. Generates a tracking sheet with accession numbers, sequence types, CDS lengths, notes, and NCBI record titles.
+    Records rejected candidates in the tracking sheet if an NCBI search result is retrieved but the CDS gene annotation does not exactly match the target gene.
 
 ## Input File
 
@@ -51,7 +53,7 @@ python fetch_cds.py
 ```
 When prompted, enter the target gene name:
 ```
-Enter target gene, e.g. CALM1: CALM1
+Enter target gene(s), separated by commas, e.g. CALM1,CNGA1,AIPL1: CALM1,CNGA1,AIPL1
 ```
 
 ## Current Output
@@ -59,13 +61,16 @@ Enter target gene, e.g. CALM1: CALM1
 For a target gene such as CALM1, the program creates a folder:
 ```
 output/CALM1/
+output/CNGA1/
+output/AIPL1/
 ```
-Inside that folder, it creates:
+Inside a folder, e.g folder CALM1 it creates:
 ```
 CALM1.txt
 CALM1_tracking_sheet.csv
 ```
-The .txt file contains the retrieved CDS sequences in FASTA-style format. It is saved as .txt first so the user can manually review and remove unwanted sequences before converting it to .fas or .fasta for alignment in MEGA.
+The .txt file contains the retrieved CDS sequences in FASTA-style format, with the species common name added at the beginning of each sequence header before the NCBI-style CDS annotation.
+It is saved as .txt first so the user can manually review and remove unwanted sequences before converting it to .fas or .fasta for alignment in MEGA.
 
 The tracking sheet contains:
 ```
@@ -81,7 +86,11 @@ Title
 
 ## Current Selection Logic
 
-At this stage, the program retrieves all matching NM_ and XM_ RefSeq mRNA candidates that contain a CDS feature matching the target gene.
+At this stage, the program retrieves matching NM_ and XM_ RefSeq mRNA candidates that contain a CDS feature matching the target gene.
+
+If both NM_ and XM_ records are found for the same gene/species search, the current version prioritizes NM_ curated RefSeq records for the main output. If no NM_ records are found, XM_ predicted RefSeq records are used.
+
+If an NCBI search result is retrieved but its CDS gene annotation does not exactly match the target gene, the sequence is not added to the combined .txt file. The tracking sheet records this as a rejected candidate and lists the CDS gene annotation that was found.
 
 The program does not yet automatically decide which transcript variant should be kept as the final selected sequence.
 
@@ -121,18 +130,7 @@ output/
 ```
 This would allow extra transcript variants to be preserved in case they are needed later, while keeping the main sequence file cleaner for alignment.
 
-### 2. Prioritize curated RefSeq records when both NM_ and XM_ records are found
-
-I plan to add logic so that if both NM_ and XM_ records are found for the same gene and species, the program prioritizes the NM_ record as the main candidate.
-
-This is because:
-
-NM_ = RefSeq curated mRNA
-XM_ = RefSeq predicted mRNA
-
-However, the XM_ records may still be saved separately as additional transcript variants or backup candidates.
-
-### 3. Protein/product annotation checking
+### 2. Protein/product annotation checking
 
 I plan to add an additional user input for the expected protein or product keyword related to the target gene.
 

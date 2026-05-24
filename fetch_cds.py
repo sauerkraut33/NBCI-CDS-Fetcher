@@ -71,6 +71,22 @@ def search_ncbi_candidates(gene: str, species: str, max_results: int = 10) -> li
     time.sleep(0.4)
     return candidates
 
+def prioritize_nm_over_xm(candidates: list[dict]) -> list[dict]:
+    """
+    If curated NM_ records are found for a species/gene,
+    keep only NM_ candidates for the main output.
+    If no NM_ records are found, keep XM_ candidates.
+    """
+    nm_candidates = [
+        candidate for candidate in candidates
+        if candidate["accession"].startswith("NM_")
+    ]
+
+    if nm_candidates:
+        return nm_candidates
+
+    return candidates
+
 def fetch_genbank(accession: str):
     """Fetch one NCBI nucleotide record in GenBank format."""
     print(f"Fetching GenBank record: {accession}")
@@ -86,9 +102,13 @@ def fetch_genbank(accession: str):
     time.sleep(0.4)
     return record
 
-def extract_cds(record, expected_gene: str) -> list[dict]:
-    """Extract CDS features from a GenBank record that match the expected gene."""
+def extract_cds(record, expected_gene: str) -> tuple[list[dict], list[str]]:
+    """
+    Extract CDS features from a GenBank record that match the expected gene.
+    Also return gene names found in CDS features for clearer tracking notes.
+    """
     cds_list = []
+    found_cds_genes = []
 
     for feature in record.features:
         if feature.type != "CDS":
@@ -98,6 +118,9 @@ def extract_cds(record, expected_gene: str) -> list[dict]:
         product = feature.qualifiers.get("product", [""])[0]
         protein_id = feature.qualifiers.get("protein_id", [""])[0]
         db_xrefs = feature.qualifiers.get("db_xref", [])
+
+        if gene_name and gene_name not in found_cds_genes:
+            found_cds_genes.append(gene_name)
 
         gene_matches = gene_name.upper() == expected_gene.upper()
 
@@ -116,7 +139,7 @@ def extract_cds(record, expected_gene: str) -> list[dict]:
                 "sequence": str(cds_seq),
             })
 
-    return cds_list
+    return cds_list, found_cds_genes
 
 def build_ncbi_style_header(common_name: str, cds: dict, variant_note: str = "") -> str:
     """Build a FASTA header similar to NCBI's downloaded CDS FASTA header."""
@@ -215,129 +238,156 @@ def write_combined_sequence_txt(fasta_records: list[dict], output_path: Path) ->
 
             fasta_file.write("\n")
 
+def get_target_genes() -> list[str]:
+    """Prompt user for one or more target genes."""
+    gene_input = input("Enter target gene(s), separated by commas, e.g. CALM1,CNGA1,AIPL1: ")
+
+    genes = [
+        gene.strip().upper()
+        for gene in gene_input.split(",")
+        if gene.strip()
+    ]
+
+    if not genes:
+        raise ValueError("No target genes entered.")
+
+    return genes
+
 def main():
-    target_gene = input("Enter target gene: ").strip().upper()
+    target_genes = get_target_genes()
 
     input_dir = Path("input")
     base_output_dir = Path("output")
-    gene_output_dir = base_output_dir / target_gene
-    gene_output_dir.mkdir(parents=True, exist_ok=True)
 
     species_file = input_dir / "Additional_sampling_species.xlsx"
     species_records = read_species_list(species_file)
 
-    tracking_rows = []
-    fasta_records = []
+    for target_gene in target_genes:
+        print(f"\n==============================")
+        print(f"Starting gene: {target_gene}")
+        print(f"==============================")
 
-    for species_record in species_records:
-        taxonomic_group = species_record["taxonomic_group"]
-        common_name = species_record["common_name"]
-        scientific_name = species_record["scientific_name"]
+        gene_output_dir = base_output_dir / target_gene
+        gene_output_dir.mkdir(parents=True, exist_ok=True)
 
-        print(f"\nSearching {target_gene} in {common_name} ({scientific_name})")
+        tracking_rows = []
+        fasta_records = []
 
-        candidates = search_ncbi_candidates(
-            gene=target_gene,
-            species=scientific_name,
-            max_results=10,
-        )
+        for species_record in species_records:
+            taxonomic_group = species_record["taxonomic_group"]
+            common_name = species_record["common_name"]
+            scientific_name = species_record["scientific_name"]
 
-        if not candidates:
-            tracking_rows.append({
-                "Taxonomic group": taxonomic_group,
-                "Species (Common Name)": common_name,
-                "Species (Scientific Name)": scientific_name,
-                "Accession Numbers": "-",
-                "Sequence Type": "-",
-                "CDS Length (bp)": "-",
-                "Notes": "no NM_/XM_ RefSeq mRNA candidates found",
-                "Title": "-",
-            })
-            continue
+            print(f"\nSearching {target_gene} in {common_name} ({scientific_name})")
 
-        for candidate in candidates:
-            accession = candidate["accession"]
-            title = candidate["title"]
-            sequence_type = candidate["record_type"] + " CDS"
+            candidates = search_ncbi_candidates(
+                gene=target_gene,
+                species=scientific_name,
+                max_results=10,
+            )
 
-            try:
-                record = fetch_genbank(accession)
-                cds_entries = extract_cds(record, target_gene)
-
-            except Exception as error:
+            if not candidates:
                 tracking_rows.append({
                     "Taxonomic group": taxonomic_group,
                     "Species (Common Name)": common_name,
                     "Species (Scientific Name)": scientific_name,
-                    "Accession Numbers": accession,
-                    "Sequence Type": sequence_type,
+                    "Accession Numbers": "-",
+                    "Sequence Type": "-",
                     "CDS Length (bp)": "-",
-                    "Notes": f"error fetching/extracting CDS: {error}",
-                    "Title": title,
+                    "Notes": "no NM_/XM_ RefSeq mRNA candidates found",
+                    "Title": "-",
                 })
                 continue
 
-            if not cds_entries:
-                tracking_rows.append({
-                    "Taxonomic group": taxonomic_group,
-                    "Species (Common Name)": common_name,
-                    "Species (Scientific Name)": scientific_name,
-                    "Accession Numbers": accession,
-                    "Sequence Type": sequence_type,
-                    "CDS Length (bp)": "-",
-                    "Notes": "no matching CDS feature found",
-                    "Title": title,
-                })
-                continue
+            # If any NM_ records exist, use NM_ records only for main output.
+            candidates = prioritize_nm_over_xm(candidates)
 
-            for cds in cds_entries:
-                notes = get_variant_note(title)
+            for candidate in candidates:
+                accession = candidate["accession"]
+                title = candidate["title"]
+                sequence_type = candidate["record_type"] + " CDS"
 
-                fasta_header = build_ncbi_style_header(
-                    common_name=common_name,
-                    cds=cds,
-                    variant_note=notes,
-                )
+                try:
+                    record = fetch_genbank(accession)
+                    cds_entries, found_cds_genes = extract_cds(record, target_gene)
 
-                fasta_records.append({
-                    "header": fasta_header,
-                    "sequence": cds["sequence"],
-                })
+                except Exception as error:
+                    tracking_rows.append({
+                        "Taxonomic group": taxonomic_group,
+                        "Species (Common Name)": common_name,
+                        "Species (Scientific Name)": scientific_name,
+                        "Accession Numbers": accession,
+                        "Sequence Type": sequence_type,
+                        "CDS Length (bp)": "-",
+                        "Notes": f"error fetching/extracting CDS: {error}",
+                        "Title": title,
+                    })
+                    continue
 
-                tracking_rows.append({
-                    "Taxonomic group": taxonomic_group,
-                    "Species (Common Name)": common_name,
-                    "Species (Scientific Name)": scientific_name,
-                    "Accession Numbers": accession,
-                    "Sequence Type": sequence_type,
-                    "CDS Length (bp)": cds["cds_length"],
-                    "Notes": notes,
-                    "Title": title,
-                })
+                if not cds_entries:
+                    found_gene_text = ", ".join(found_cds_genes) if found_cds_genes else "no CDS gene annotation found"
 
-    # Keep column order clean.
-    columns = [
-        "Taxonomic group",
-        "Species (Common Name)",
-        "Species (Scientific Name)",
-        "Accession Numbers",
-        "Sequence Type",
-        "CDS Length (bp)",
-        "Notes",
-        "Title",
-    ]
+                    tracking_rows.append({
+                        "Taxonomic group": taxonomic_group,
+                        "Species (Common Name)": common_name,
+                        "Species (Scientific Name)": scientific_name,
+                        "Accession Numbers": accession,
+                        "Sequence Type": sequence_type,
+                        "CDS Length (bp)": "-",
+                        "Notes": f"candidate found by NCBI search, but CDS gene annotation does not match target gene; found CDS gene(s): {found_gene_text}",
+                        "Title": title,
+                    })
+                    continue
 
-    tracking_df = pd.DataFrame(tracking_rows, columns=columns)
+                for cds in cds_entries:
+                    notes = get_variant_note(title)
 
-    tracking_output_path = gene_output_dir / f"{target_gene}_tracking_sheet.csv"
-    sequence_output_path = gene_output_dir / f"{target_gene}.txt"
+                    fasta_header = build_ncbi_style_header(
+                        common_name=common_name,
+                        cds=cds,
+                        variant_note=notes,
+                    )
 
-    tracking_df.to_csv(tracking_output_path, index=False)
-    write_combined_sequence_txt(fasta_records, sequence_output_path)
+                    fasta_records.append({
+                        "header": fasta_header,
+                        "sequence": cds["sequence"],
+                    })
 
-    print("\nDone.")
-    print(f"Tracking sheet saved to: {tracking_output_path}")
-    print(f"Combined sequence text file saved to: {sequence_output_path}")
+                    tracking_rows.append({
+                        "Taxonomic group": taxonomic_group,
+                        "Species (Common Name)": common_name,
+                        "Species (Scientific Name)": scientific_name,
+                        "Accession Numbers": accession,
+                        "Sequence Type": sequence_type,
+                        "CDS Length (bp)": cds["cds_length"],
+                        "Notes": notes,
+                        "Title": title,
+                    })
+
+        columns = [
+            "Taxonomic group",
+            "Species (Common Name)",
+            "Species (Scientific Name)",
+            "Accession Numbers",
+            "Sequence Type",
+            "CDS Length (bp)",
+            "Notes",
+            "Title",
+        ]
+
+        tracking_df = pd.DataFrame(tracking_rows, columns=columns)
+
+        tracking_output_path = gene_output_dir / f"{target_gene}_tracking_sheet.csv"
+        sequence_output_path = gene_output_dir / f"{target_gene}.txt"
+
+        tracking_df.to_csv(tracking_output_path, index=False)
+        write_combined_sequence_txt(fasta_records, sequence_output_path)
+
+        print(f"\nDone with {target_gene}.")
+        print(f"Tracking sheet saved to: {tracking_output_path}")
+        print(f"Combined sequence text file saved to: {sequence_output_path}")
+
+    print("\nAll requested genes complete.")
 
 if __name__ == "__main__":
     main()
