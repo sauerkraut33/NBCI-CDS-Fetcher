@@ -25,7 +25,7 @@ def read_species_list(file_path: Path) -> list[dict]:
 
     return species_records
 
-def search_ncbi_candidates(gene: str, species: str, max_results: int = 10) -> list[dict]:
+def search_ncbi_candidates(gene: str, species: str, max_results: int = 20) -> list[dict]:
     """Search NCBI Nucleotide for mRNA records matching one gene and one species."""
     query = f'{gene}[Gene Name] AND "{species}"[Organism] AND mRNA'
 
@@ -283,7 +283,7 @@ def main():
             candidates = search_ncbi_candidates(
                 gene=target_gene,
                 species=scientific_name,
-                max_results=10,
+                max_results=20,
             )
 
             if not candidates:
