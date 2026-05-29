@@ -118,6 +118,7 @@ def extract_cds(record, expected_gene: str) -> tuple[list[dict], list[str]]:
         product = feature.qualifiers.get("product", [""])[0]
         protein_id = feature.qualifiers.get("protein_id", [""])[0]
         db_xrefs = feature.qualifiers.get("db_xref", [])
+        is_low_quality_protein = "LOW QUALITY PROTEIN" in product.upper()
 
         if gene_name and gene_name not in found_cds_genes:
             found_cds_genes.append(gene_name)
@@ -137,6 +138,7 @@ def extract_cds(record, expected_gene: str) -> tuple[list[dict], list[str]]:
                 "location": location,
                 "cds_length": len(cds_seq),
                 "sequence": str(cds_seq),
+                "is_low_quality_protein": is_low_quality_protein,
             })
 
     return cds_list, found_cds_genes
@@ -206,6 +208,16 @@ def get_variant_note(title: str) -> str:
             return part.strip()
 
     return "transcript variant mentioned"
+
+def add_note(existing_notes: str, new_note: str) -> str:
+    """Add a note using ';' if there is already an existing note."""
+    if not new_note:
+        return existing_notes
+
+    if not existing_notes:
+        return new_note
+
+    return existing_notes + "; " + new_note
 
 def format_cds_location(feature) -> str:
     """Convert a CDS feature location to a 1-based NCBI-like location string."""
@@ -342,10 +354,13 @@ def main():
                 for cds in cds_entries:
                     notes = get_variant_note(title)
 
+                    if cds["is_low_quality_protein"]:
+                        notes = add_note(notes, "LOW QUALITY PROTEIN")
+
                     fasta_header = build_ncbi_style_header(
                         common_name=common_name,
                         cds=cds,
-                        variant_note=notes,
+                        variant_note=get_variant_note(title),
                     )
 
                     fasta_records.append({
