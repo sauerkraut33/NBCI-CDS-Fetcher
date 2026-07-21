@@ -110,27 +110,8 @@ CALM1.fas
 and opened in MEGA for MUSCLE codon alignment.
 
 ## Planned Features
-### 1. Manual deletion and transcript variant management
 
-I plan to add a function for manually removing unwanted transcript variants from the main sequence file.
-
-The goal is:
-
-Keep one selected representative CDS per species in the main gene .txt file.
-Move removed transcript variants into a separate file or folder.
-Mark selected and removed sequences in the tracking sheet.
-
-Possible future output structure:
-```
-output/
-  CALM1/
-    CALM1.txt
-    CALM1_tracking_sheet.csv
-    CALM1_extra_transcript_variants.txt
-```
-This would allow extra transcript variants to be preserved in case they are needed later, while keeping the main sequence file cleaner for alignment.
-
-### 2. Protein/product annotation checking
+### 1. Protein/product annotation checking
 
 I plan to add an additional user input for the expected protein or product keyword related to the target gene.
 
@@ -138,14 +119,35 @@ For example, for CALM1, the expected protein/product keyword could be:
 ```
 calmodulin
 ```
-The program could then check whether the CDS product annotation contains the expected keyword, such as:
+The program could then compare this keyword with the CDS product annotation and flag records that may require manual review, such as:
 ```
 calmodulin-1
 calmodulin-1 isoform 2
 neo-calmodulin
 ```
-This would help flag records where the gene name matches but the protein/product annotation may need manual review.
+This feature is intended to assist manual quality control rather than replace it, helping the user identify records whose protein/product annotation may need closer inspection.
 
+### 2. Post-retrieval sequence management
+
+I plan to add a function for managing retrieved sequences after manual review.
+
+The goal is:
+
+Remove unwanted sequences from the main gene ```.txt``` file.
+Mark removed sequences in the tracking sheet.
+Optionally move removed sequences into a separate file for future reference.
+
+Sequences may be removed for a variety of reasons, including unwanted transcript variants, incorrect protein/product annotations, or other manually identified issues.
+
+Possible future output structure:
+```
+output/
+CALM1/
+CALM1.txt
+CALM1_tracking_sheet.csv
+CALM1_removed_sequences.txt
+```
+This would reduce repetitive manual editing while preserving a record of removed sequences for future review.
 ## Notes
 
 This program is not intended to fully replace manual sequence review.
