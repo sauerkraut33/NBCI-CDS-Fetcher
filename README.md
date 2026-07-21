@@ -16,11 +16,11 @@ The current version:
     - `XM_` accessions: RefSeq predicted mRNA
     Prioritizes NM_ records when both NM_ and XM_ records are found for the same gene/species search.
 5. Fetches GenBank records for the candidate accessions.
-6. Extracts CDS features matching the target gene.
+6. Extracts CDS features whose gene annotation exactly matching the target gene.
 7. Calculates CDS length from the extracted CDS sequence.
 8. Creates a gene-specific output folder.
 9. Writes all retrieved CDS sequences into a combined `.txt` file.
-10. Generates a tracking sheet with accession numbers, sequence types, CDS lengths, notes, and NCBI record titles.
+10. Generates a tracking sheet with accession numbers, sequence types, CDS lengths, NCBI record titles and notes (e.g., transcript variants, LOW QUALITY PROTEIN annotations, or rejected candidates),.
     Records rejected candidates in the tracking sheet if an NCBI search result is retrieved but the CDS gene annotation does not exactly match the target gene.
 
 ## Input File
